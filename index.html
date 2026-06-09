@@ -400,6 +400,134 @@ void EINT3_IRQHandler(void)
 }
 </code></pre>
 </div>
+<div class="card">
+<h2>5. KEY PAD<h2>
+<pre><code>
+#include <LPC17xx.h>
+
+#define RS_PIN       (1 << 4)
+#define EN_PIN       (1 << 5)
+#define LCD_DATA_MASK (0xF << 6)
+
+void delay(unsigned int count) {
+    unsigned int i;
+    for (i = 0; i < count; i++);
+}
+
+void lcd_write_nibble(unsigned char value, unsigned char is_data) {
+
+    LPC_GPIO2->FIOCLR = LCD_DATA_MASK | RS_PIN | EN_PIN;
+
+    LPC_GPIO2->FIOSET = (value & 0x0F) << 6;
+
+    if (is_data) {
+        LPC_GPIO2->FIOSET = RS_PIN;
+    }
+
+    LPC_GPIO2->FIOSET = EN_PIN;
+    delay(1000);
+    LPC_GPIO2->FIOCLR = EN_PIN;
+    delay(2000);
+}
+
+void lcd_cmd(unsigned char cmd) {
+    lcd_write_nibble((cmd >> 4) & 0x0F, 0);
+    lcd_write_nibble(cmd & 0x0F, 0);
+}
+
+void lcd_data(unsigned char data) {
+    lcd_write_nibble((data >> 4) & 0x0F, 1);
+    lcd_write_nibble(data & 0x0F, 1);
+}
+
+void lcd_init(void) {
+
+    LPC_GPIO2->FIODIR |= RS_PIN | EN_PIN | LCD_DATA_MASK;
+
+    delay(20000);
+    lcd_cmd(0x33);
+    lcd_cmd(0x32);
+    lcd_cmd(0x28);
+    lcd_cmd(0x0C);
+    lcd_cmd(0x01);
+    delay(20000);
+}
+
+void lcd_string(char *str) {
+
+    while (*str) {
+        lcd_data(*str++);
+    }
+}
+
+unsigned char keypad_scan(void) {
+
+    unsigned char row, col;
+    unsigned int col_state;
+
+    unsigned char key_lookup[4][4] = {
+        {'0', '1', '2', '3'},
+        {'4', '5', '6', '7'},
+        {'8', '9', 'A', 'B'},
+        {'C', 'D', 'E', 'F'}
+    };
+
+    LPC_GPIO1->FIODIR &= ~(0xF << 20);
+    LPC_GPIO1->FIODIR |= (0xF << 16);
+
+    while (1) {
+
+        for (row = 0; row < 4; row++) {
+
+            LPC_GPIO1->FIOSET = (0xF << 16);
+
+            LPC_GPIO1->FIOCLR = (1 << (16 + row));
+
+            delay(500);
+
+            col_state = (LPC_GPIO1->FIOPIN >> 20) & 0x0F;
+
+            if (col_state != 0x0F) {
+
+                for (col = 0; col < 4; col++) {
+
+                    if (!(col_state & (1 << col))) {
+
+                        while (!((LPC_GPIO1->FIOPIN >> 20) & (1 << col)));
+
+                        return key_lookup[row][col];
+                    }
+                }
+            }
+        }
+    }
+}
+
+int main(void) {
+
+    unsigned char pressed_key;
+
+    SystemInit();
+    SystemCoreClockUpdate();
+
+    lcd_init();
+
+    lcd_cmd(0x80);
+
+    lcd_string("RAM RAM");
+
+    while (1) {
+
+        pressed_key = keypad_scan();
+
+        lcd_cmd(0xC7);
+
+        lcd_data(pressed_key);
+    }
+}
+</code></pre>
+
+</div>
 
 </div>
 
